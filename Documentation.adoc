@@ -1,4 +1,4 @@
-There was an innocent time in database
+There was once an innocent time in database
 development where we generally had just one development database on one server,
 and we all developed and tested on it. We managed quite well because, after
 all, a relational database is a multi-user, multi-process device, and is its
