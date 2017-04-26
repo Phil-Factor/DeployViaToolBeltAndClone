@@ -1,0 +1,94 @@
+There was an innocent time in database
+development where we generally had just one development database on one server,
+and we all developed and tested on it. We managed quite well because, after
+all, a relational database is a multi-user, multi-process device, and is its
+own development environment. We would check out objects such as tables or views
+from source control if editing them, do our work and check our object scripts back
+into source control to make the changes permanent. When the time came to deploy
+what we’d done, we had the task of creating the database anew purely from the
+scripts that had been checked in. This ensures that nothing unwanted, that
+hasn’t been specifically included, creeps into the build. Even Database
+developers are human, and mistakes were common. Once we were certain that the
+build was able to create a functioning and tested database, we then scrabbled
+around to find a way to migrate any production system that we had to the new
+tested version, practicing on staging until everything went right. It wasn’t
+pretty, and could take a long time. We would miss things that we assumed would
+be in place, and we’d find conflicts that had to be resolved.
+
+Nowadays, we like to build, integrate and
+deploy the database automatically via a script. We prefer to take the database through
+to staging as soon as we’ve written anything more than a couple of ‘hello
+world’ database objects. We then repeat this build process as often as we can. We
+do it to make sure it can be done, and to get immediate feedback of a problem. We
+can also say, at any point in time, whether we have a version that is potentially
+deliverable. We want to be able to do this very quickly at any stage of the
+database lifecycle if the application developers are waiting for a database
+change, or if there is an important security fix to put in place. I like a
+daily build/integration/test. 
+
+The process is, generally, getting more
+complicated too. We have a test cell with databases and servers for a wide
+variety of tests. We have developers who need to work on their own isolated
+version of the database. The more demanding the testing, and the more rapidly
+it must be done, then the greater the need for provisioning several versions of
+the database. The more rapidly we have to deliver, the better the documentation
+of the database. If parts of the data that we use to develop with are sensitive
+in terms of privacy, company security or are financial, we need to mask,
+obfuscate or create from scratch the data that we develop and test on. All
+these trends are happening at once.
+
+At some point, one has to stop talking in
+generalities, and cease waving ones arms whilst glossing over real technical
+problems, and produce a practical script.
+
+The problem in revealing a script is that
+
+* No two development teams have ever done database development in the same way, so scripts have to be changed to conform to your development environment.
+* Real scripts are too idiosyncratic. They reveal too much about the quirks of the way you actually go about the process of developing databases.
+
+
+To try to meet these problems, I’ve created
+a special script that, hopefully, is easily adapted but deals with all the
+issues in a general way.
+
+
+
+The general principles are:
+
+* All databases within development must be at the version of the current successful build.
+
+* Before we update a database, we preserve changes just in case the developer has forgotten to save their work in source control.
+ 
+* We audit as much of the process as possible.
+
+* We need to allow for arbitrary pre- and post-build scripts, mainly for inserting data.
+
+* It should be possible to inspect the entire build script.
+
+* The script itself should have no hard-coded variables. These should be held in a data file.
+
+
+In the script that I’m featuring, I’m using
+some Redgate tools to do the work. Only SQL Compare is essential, but Data
+Compare can be used to create an executable file that inserts data into tables.
+Normally when I do a PowerShell script that uses a proprietary tool, I like to
+provide an additional alternative version that uses whatever is provided by
+Microsoft or has a free software license, but in this case, it would be rather impractical.
+It is possible to do a build from object scripts: I’ve illustrated how to do so
+in my article ‘https://www.simple-talk.com/sql/database-delivery/how-to-build-and-deploy-a-database-from-object-level-source-in-a-vcs/[How
+to Build and Deploy a Database from Object-Level Source in a VCS]’. Cloning
+can present a much bigger problem. One alternative mechanism for provisioning
+is to copy the mdf file onto each machine and attach it on each server. One
+can, of course run a backup from the database you want to copy, and restore it
+to each clone. Both these techniques are slow, end up with a lot of data being
+moved around the network and use a lot of disk space. It also leaves more complications
+for security.
+
+
+
+The script itself is rather too long to be
+embedded in an article. Besides this, I keep adding features and trying to
+improve it. Everyone who tries it wants additional features. I’ve therefore
+decided to place it on Github in the hope that someone else will take it and
+improve it.
+
