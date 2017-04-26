@@ -1,5 +1,4 @@
-There was once an innocent time in database
-development where we generally had just one development database on one server,
+There was once an innocent time in database development where we generally had just one development database on one server,
 and we all developed and tested on it. We managed quite well because, after
 all, a relational database is a multi-user, multi-process device, and is its
 own development environment. We would check out objects such as tables or views
@@ -84,11 +83,13 @@ to each clone. Both these techniques are slow, end up with a lot of data being
 moved around the network and use a lot of disk space. It also leaves more complications
 for security.
 
-
-
 The script itself is rather too long to be
 embedded in an article. Besides this, I keep adding features and trying to
 improve it. Everyone who tries it wants additional features. I’ve therefore
 decided to place it on Github in the hope that someone else will take it and
 improve it.
+
+To use the script, you will need to get two powershell files. You will also need at least SQL Clone and SQL Compare. If you have the toolbelt, you'll be able to use SQL Data Compare, SQL Data Generator and SQL Doc where you need to.
+
+
 
