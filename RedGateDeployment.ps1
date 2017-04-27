@@ -34,7 +34,7 @@ iterate over the clones when making or updating them #>
 #read in the configuration
 $data = $null
 
-$Data = &'C:\Users\andrew.clarke\Documents\MyInstallationData.ps1'
+$Data = &'C:\Phil.Factor\MyInstallationData.ps1'
 <# we read in the data as a structure. Then we do some sanity checking to make sure that the 
 data is reasonably viable. #>
 
@@ -107,7 +107,6 @@ if (-not (Test-Path -path "$($data.source.DatabasePath)\Source\*.*"))
         else { "we had an error! (code $LASTEXITCODE)" }
     }
 }
-
 
 #now have we got the data insert statements? If not get them from the current build
 # (in this case, we're assuming that you've obfuscated any real data using SDG).
