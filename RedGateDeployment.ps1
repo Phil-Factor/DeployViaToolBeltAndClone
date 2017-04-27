@@ -34,7 +34,7 @@ iterate over the clones when making or updating them #>
 #read in the configuration
 $data = $null
 
-$Data = &'MyInstallationData.ps1'
+$Data = &'C:\Users\andrew.clarke\Documents\MyInstallationData.ps1'
 <# we read in the data as a structure. Then we do some sanity checking to make sure that the 
 data is reasonably viable. #>
 
