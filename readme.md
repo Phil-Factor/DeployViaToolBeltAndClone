@@ -3,7 +3,7 @@ This PowerShell script is designed to show how you would use Redgate’s Toolbel
 If you wish, it will stock the database with generated data rather than take data from a SQL File. To do this, you have to specify the location of your SQL Generator application and your SQL data Generator project file. Also, it will generate the contents of a documentation website if you specify the location of your SQL Doc application.
 
 # At a glance #
-[http://sfsdf sdf sdf ](http://sfsdf sdf sdf  "The Image")
+![](https://github.com/Phil-Factor/DeployViaToolBeltAndClone/blob/master/BuildAndProvisioning.png?raw=true)
 # The Build Data File #
 
 There are two files, a Build Data file and a Process script. The Process script executes the data file, which is a PowerShell script. The Data file has all the data for your particular deployment: nothing is held in the process script. The data file includes a list of all the clones to create or update. If you want the process script to set up the source directory from an existing development server, then it will do this for you, and create the necessary subdirectories.
