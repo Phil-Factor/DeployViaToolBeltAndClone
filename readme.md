@@ -60,5 +60,10 @@ The details of the image that you want to create in order to
 - The id of the Sql Clone Image Location (usually 1)
 ## Clones ##
   A list of all the cloned databases, referenced by the netname of the clone servers and the name of the database 
+# For further information #
+[Using SQL Clone and the Toolbelt for DLM build, integration and provisioning](https://github.com/Phil-Factor/DeployViaToolBeltAndClone/blob/master/Documentation.adoc "Using SQL Clone and the Toolbelt for DLM build, integration and provisioning")
+
+
+
 
  
