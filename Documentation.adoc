@@ -1,3 +1,12 @@
+= Scripting Deployment and Provisioning using RedGate Tools
+Author Name
+:doctype: article
+:encoding: utf-8
+:lang: en
+:toc: left
+:numbered:
+
+
 There was once an innocent time in database development where we generally had just one development database on one server,
 and we all developed and tested on it. We managed quite well because, after
 all, a relational database is a multi-user, multi-process device, and is its
@@ -6,7 +15,9 @@ from source control if editing them, do our work and check our object scripts ba
 into source control to make the changes permanent. When the time came to deploy
 what we’d done, we had the task of creating the database anew purely from the
 scripts that had been checked in. This ensures that nothing unwanted, that
-hasn’t been specifically included, creeps into the build. Even Database
+hasn’t been specifically included, creeps into the build. 
+
+Even Database
 developers are human, and mistakes were common. Once we were certain that the
 build was able to create a functioning and tested database, we then scrabbled
 around to find a way to migrate any production system that we had to the new
@@ -91,5 +102,8 @@ improve it.
 
 To use the script, you will need to get two powershell files. You will also need at least SQL Clone and SQL Compare. If you have the toolbelt, you'll be able to use SQL Data Compare, SQL Data Generator and SQL Doc where you need to.
 
-
+[TIP]
+====
+The Readame.md file gives you detailed instructions on how to get going with the script.
+====
 

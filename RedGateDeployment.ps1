@@ -183,8 +183,8 @@ if ($ExistingDatabase -ne $null)
             }
             write-verbose "checking whether anything has changed on clone $($sqlServerInstance.ServerAddress):$TheDatabase against $($data.current.DevServerInstance):$($data.current.Database)"
             
-            $AllArgs = @("/server1:$($data.current.DevServerInstance)", # The source server
-                "/database1:$($data.current.Database)", #The name of the source database on the source server
+            $AllArgs = @("/server1:$($data.build.NewBuildServerInstance)", # The source server
+                "/database1:$($data.build.NewDatabase)", #The name of the source database on the source server
                 "/server2:$($sqlServerInstance.ServerAddress)", #the clone
                 "/database2:$TheDatabase", #The name of the database on the clone server
                 "/scriptfile:$($data.source.ChangesPath)\$comparison.sql"
