@@ -1,109 +1,642 @@
-= Scripting Deployment and Provisioning using RedGate Tools
-Author Name
-:doctype: article
-:encoding: utf-8
-:lang: en
-:toc: left
-:numbered:
+How to create and refresh development and test databases automatically, using SQL Clone and SQL Toolbelt
+========================================================================================================
 
 
-There was once an innocent time in database development where we generally had just one development database on one server,
-and we all developed and tested on it. We managed quite well because, after
-all, a relational database is a multi-user, multi-process device, and is its
-own development environment. We would check out objects such as tables or views
-from source control if editing them, do our work and check our object scripts back
-into source control to make the changes permanent. When the time came to deploy
-what we’d done, we had the task of creating the database anew purely from the
-scripts that had been checked in. This ensures that nothing unwanted, that
-hasn’t been specifically included, creeps into the build. 
+This article presents a PowerShell automation script that creates and refreshes
+the various databases on one or more servers that are required for test and
+development work, It uses Redgate’s SQL Clone, SQL Compare and a few other
+optional tools from the SQL Toolbelt.
 
-Even Database
-developers are human, and mistakes were common. Once we were certain that the
-build was able to create a functioning and tested database, we then scrabbled
-around to find a way to migrate any production system that we had to the new
-tested version, practicing on staging until everything went right. It wasn’t
-pretty, and could take a long time. We would miss things that we assumed would
-be in place, and we’d find conflicts that had to be resolved.
+A basic premise of this solution is that a database is being developed, and its
+source is stored in the version control system (VCS). The automation script will
+build the database from the latest build script in version control, stock it
+with data if wanted, and document the database if required. In the next stage,
+it uses SQL Clone to create an image of this database, and from the image it
+creates create 'clones' of the database, or refreshes existing clones, on each
+of the SQL Server development and test instances that you specify. The net
+result is that all the development and test databases should end up with
+metadata and data that is identical to that specified in the source, for that
+database version.
 
-Nowadays, we like to build, integrate and
-deploy the database automatically via a script. We prefer to take the database through
-to staging as soon as we’ve written anything more than a couple of ‘hello
-world’ database objects. We then repeat this build process as often as we can. We
-do it to make sure it can be done, and to get immediate feedback of a problem. We
-can also say, at any point in time, whether we have a version that is potentially
-deliverable. We want to be able to do this very quickly at any stage of the
-database lifecycle if the application developers are waiting for a database
-change, or if there is an important security fix to put in place. I like a
-daily build/integration/test. 
+The automation script comes with a few safety checks to ensure, for example,
+that before dropping existing clones and creating new ones from a new image, any
+changes to local database clones are written to a directory in the VCS as a
+safeguard.
 
-The process is, generally, getting more
-complicated too. We have a test cell with databases and servers for a wide
-variety of tests. We have developers who need to work on their own isolated
-version of the database. The more demanding the testing, and the more rapidly
-it must be done, then the greater the need for provisioning several versions of
-the database. The more rapidly we have to deliver, the better the documentation
-of the database. If parts of the data that we use to develop with are sensitive
-in terms of privacy, company security or are financial, we need to mask,
-obfuscate or create from scratch the data that we develop and test on. All
-these trends are happening at once.
+Background
+----------
 
-At some point, one has to stop talking in
-generalities, and cease waving ones arms whilst glossing over real technical
-problems, and produce a practical script.
+I've been in IT long enough to remember an innocent time in database
+development, where we generally had just one development database on one server,
+and we all developed and tested on it.
 
-The problem in revealing a script is that
+In many respects, we managed quite well because, after all, a relational
+database is a multi-user, multi-process device, and is its own development
+environment. We stored the database object scripts in source control, and would
+check out objects, such as tables or views, to edit them, do our work and then
+perform a check-in to include the changes in the next development version. There
+were complications when one developer decided to alter an object with
+interdependencies on the work of another developer, so it was just as well we
+worked in the same room, within shouting distance. The advent of schemas put an
+end to the obvious collisions.
 
-* No two development teams have ever done database development in the same way, so scripts have to be changed to conform to your development environment.
-* Real scripts are too idiosyncratic. They reveal too much about the quirks of the way you actually go about the process of developing databases.
+Each nightly build would create a new version of the database, purely from the
+scripts in source control. In theory, this meant that nothing unwanted, nothing
+that hadn't been specifically included, could creep into the build. In practice,
+even database developers are human, and mistakes were common. Nightly
+integration tests were run to prove that each build could produce a functioning
+database.
+
+Of course, having a tested, functioning database in development did not
+necessarily mean we had a database that was deliverable to production.
+Generally, we would scrabble around to ensure that the updated tested version of
+the database worked with any existing production system that relied on the
+database, practicing in staging until everything went right. It wasn't pretty,
+and could take a long time. We would miss things that we assumed would be in
+place, and we'd find conflicts that had to be resolved.
+
+Nowadays, we like to build, integrate and deploy the database automatically, via
+a script. We practice this process as often as we can. There are no halcyon days
+when the database is too immature to build and deploy: Instead, we prefer to
+start to take the database through to staging as soon as we've written anything
+more than a couple of 'hello world' database objects. This means we get
+immediate feedback of a problem, and we can also say, at any point in time,
+whether we have a version that is potentially deliverable. We want to be able to
+deliver a database very quickly and reliably, at any stage of the database
+lifecycle, if the application developers are waiting for a database change, or
+if there is an important security fix to put in place.
+
+The more rapid the delivery cycle, the more requirements there are for copies of
+the latest build. We have developers who need to work on their own isolated copy
+of the database, but we also need several copies of the database for development
+and testing, rather than sharing just one. We often need a test cell with
+servers and databases to support a wide variety of tests, performed in parallel,
+and in some tests we need to validate the build against other versions of the
+database.
+
+The more rapidly we must deliver, the harder it is to keep the database
+documentation up-to-date, and the better we need to get at automating that
+process. If parts of the data that we use to develop with are sensitive in terms
+of privacy, company security or are financial, we need to mask, obfuscate or
+create from scratch the data that we develop and test on. All these factors
+mandate an automated build process.
+
+A PowerShell automation solution
+--------------------------------
+
+At some point, one must stop talking in generalities, cease waving one's arms
+whilst glossing over real technical problems, and produce a practical script
+that deals as sensibly as possible with these challenges, and can reliably
+automate database provisioning to the development and test servers.
+
+There are several dangers inherent in this, of course. Firstly, no two
+development teams have ever done database development in the same way, so
+scripts must be changed to conform to your development environment. Secondly,
+real scripts are too idiosyncratic. They reveal too much about the quirks of the
+way you go about the process of developing databases.
+
+To try to overcome these problems, I've created a PowerShell script that, I
+hope, is easy to adapt but deals with all the issues in a general way. The
+general principles are:
+
+-   All databases that are specified in a list must, if the build succeeds, end
+    up being at the version of the current successful build.
+
+-   Before we update a development database, we preserve changes just in case
+    the developer has forgotten to save their work in source control.
+
+-   We audit as much of the provisioning process as possible.
+
+-   We need to allow for arbitrary pre- and post-build scripts, mainly for
+    inserting data.
+
+-   It should be possible to inspect the entire database build script.
+
+-   The PowerShell script to automate the whole process should have no
+    hard-coded variables. These should be held in a separate build data file.
+
+What the solution does, at a glance
+-----------------------------------
+
+Figure 1 lays out, broadly, what the script does at each stage of the database
+provisioning process.
+
+image::https://raw.githubusercontent.com/Phil-Factor/DeployViaToolBeltAndClone/master/BuildAndProvisioning.png[caption="Figure 1"]
 
 
-To try to meet these problems, I’ve created
-a special script that, hopefully, is easily adapted but deals with all the
-issues in a general way.
+What you need to do to get it to run
+------------------------------------
+
+You will need, at minimum, a couple of SQL Server instances, a copy of SQL
+Compare, and a copy of SQL Clone. You need to install SQL Clone and set up the
+SQL Clone Server and the client development and tests servers on which you will
+create the clones.
+
+If you have the toolbelt, you'll be able to use SQL Data Compare, SQL Data
+Generator and SQL Doc, as required.
+
+You will need to download the PowerShell automation solution from GitHub. This
+consists of two PowerShell files, a build data file (**MyInstallationData.**ps1)
+and a process script (**RedgateProvisioning.ps1**). The process script take the
+instructions for the build and provisioning, and all parameters, from the build
+data file. Nothing by way of configuration information is held in the process
+script.
+
+You will need to change the values stored in the build data file to define your
+database, server environment, network paths, list of clones, and so on. I’ll
+describe the structure of the build data file later in the article.
+
+How the solution works
+----------------------
+
+The solution has two broad phases of operation, the build phase, and the
+provisioning phase.
+
+The **build phase** creates the latest database version on the build server,
+documents it and stocks it with test data. To do this, it uses various SQL
+Toolbelt tools, namely SQL Compare, SQL Data Compare, SQL Doc and SQL Data
+Generator. Only SQL Compare is essential.
+
+The **provisioning phase** provides each designated development or test
+instances with a copy of the build database, produced by the build phase.
+Traditionally, this might mean taking a backup of the build database and
+restoring it to each of the development and test servers, or copying across the
+MDF file to each server and attaching it to the instance. In either case, this
+means that you need to copy the same bytes of data many times over the network.
+This becomes increasingly expensive in terms of both time and disk space as the
+size of the build database grows, and the copies proliferate.
+
+In this solution, the provisioning phase uses SQL Clone, which copies the bytes
+only once, and then uses disk storage virtualization technologies, built into
+Windows, to virtualize the data on each target instance.
+
+SQL Clone creates one full copy of all the data and metadata that makes up the
+source database; the **image**. From this image, it can then create clones on
+each of the development SQL Server instances. Each clone will be only a few tens
+of MB in size, but has access to all those same bytes by reading from the image.
+The only data stored locally for each instance are data pages containing changes
+made directly to the local clone databases.
+
+### The Build phase
+
+The script will:
+
+#### 1. Generate the build script
+
+We check to see if build scripts already exist in the database's Source
+directory (at DatabasePath). If they don't, then the process script will create
+them from a designated development server (current.DevServerInstance) and
+database (current.Database), using **SQL Compare**, and will then store them at
+DatabasePath\Source. This allows you to put an existing database into source
+control. This was useful for testing the script, but I left it in just in case
+one or two of you haven’t got your database in source control! We assume that
+this Source directory will already be a source control directory, or will be
+turned into a GitHub repository. Whichever way it happens, you specify the
+directory in **MyInstallationData.**ps1.
+
+.Listing 1
+[source,powershell]
+----
+write-verbose "creating source control directory of database
+$($data.current.Database) on server $($data.current.DevServerInstance)"
+$AllArgs = \@("/server1:$($data.current.DevServerInstance)", # The source
+server
+"/database1:$($data.current.Database)", #The name of the source database on
+the source server
+"/scripts2:$($data.source.DatabasePath)\Source", #the destination scripts
+directory
+'/q', '/synch', #quiet, do a synch
+"/report:$($data.source.ReportPath)\ObjectSourceReport.html", #where the
+report goes
+"/reportType:Simple", "/rad", "/force") # do a simple report
+SQLCompare $AllArgs \> "$($data.source.reportPath)\InitialScriptReport.txt"
+#save the output
+if ($?) { 'updated successfully' }
+else
+{
+if ($LASTEXITCODE -eq 63) { 'Database and scripts were identical' }
+else { "we had an error! (code $LASTEXITCODE)" }
+}
+}
+
+----
+
+Similarly, the script will check for the existence of a source data directory,
+which will hold the INSERT script for static data and any other data needed for
+testing. If it doesn't exist, the script will, if required, generate a data
+INSERT script (DataSyncFile.sql) from the existing data in the current database,
+using **SQL Data Compare**. Be careful with this, it is designed merely for the
+small amount of static data that is required for a database to run. Test data
+needs to be [loaded from native BCP
+format](https://www.simple-talk.com/sql/t-sql-programming/database-deployment-the-bits-getting-data-in/).
+Insert statements would take too long.
+
+In reality, there will be a number of different data sets for various forms of
+testing. As an alternative to using SQL Data Compare, or native BCP, we can
+specify that we need to generate the data using a **SQL Data Generator** project
+file (.sqlgen) as a post-build step.
+
+Once the object-level build scripts exist in the database's Source, it will use
+them to generate a single database build script. It uses SQL Compare to read the
+Source directory of scripts, compare that with the model database on the target
+build server instance, and generate a synchronization script that will
+synchronize the two. In effect, this produces a database build script
+(Database.sql), with all the objects in the correct dependency order.
+
+.Listing 2
+[source,powershell]
+----
+write-verbose "creating build script for
+$($data.build.NewBuildServerInstance)"
+$AllArgs = \@("/scripts1:$($data.source.DatabasePath)/Source",
+"/server2:$($data.build.NewBuildServerInstance)",
+'/quiet',
+'/options:ThrowOnFileParseFailed,IgnoreCollations,IgnoreSchemaObjectAuthorization',
+'/exclude:user',
+'/database2:model',
+"/scriptfile:$($data.source.DatabasePath)\$($data.current.Database).sql")
+if (Test-Path "$($data.source.DatabasePath)\$($data.current.Database).sql")
+{ Remove-item "$($data.source.DatabasePath)\$($data.current.Database).sql"
+}
+SQLCompare $AllArgs \> "$($data.source.reportPath)\BuildScriptReport.txt"
+#save the output
+if ($?) { write-verbose "Script
+'$($($data.source.DatabasePath))\$($data.current.Database).sql' generated
+successfully" }
+else { "we had an error! (code $LASTEXITCODE)" }
+
+----
+
+#### 2. Build the latest version of the database, from version control
+
+This stage builds the new database version, on the designated build server
+(build.NewBuildServerInstance) using the build script from the previous stage.
+
+If a build database already exists, representing the previous day's build, it
+will destroy it and then build the new version, having first checked for any
+existing clones (created from the image of this database – see the **Provisioning phase**). If any clones exist, it compares this build database to
+the clones that were created from it, using SQL Compare, and write any changes
+made to the local clone as a "diff" script (which will have the clone database
+name appended with the date) to a Changes directory, just in case they weren't
+checked in, before we deploy new clones.
+
+.Listing 3
+[source,powershell]
+----
+
+write-verbose "checking whether anything has changed on clone
+$($sqlServerInstance.ServerAddress):$TheDatabase against
+$($data.build.NewBuildServerInstance):$($data.build.NewDatabase)"
+$AllArgs = \@("/server1:$($data.build.NewBuildServerInstance)", # The source
+server
+"/database1:$($data.build.NewDatabase)", #The name of the source database on
+the source server
+"/server2:$($sqlServerInstance.ServerAddress)", #the clone
+"/database2:$TheDatabase", #The name of the database on the clone server
+"/scriptfile:$($data.source.ChangesPath)\$comparison.sql"
+#, #quiet, do a synch
+#"/report:$($data.source.ChangesPath)\$($TheDatabase)Report$(get-date
+-format 'yymmddhm').html", #where the report goes
+#"/reportType:Simple", "/rad", "/force"# do a simple report
+)
+SQLCompare $AllArgs \> "$($data.source.ChangesPath)\$comparisonChanges.txt"
+#save the output
+if ($?) { 'updated successfully' }
+
+----
+
+Having done this, it checks for any active user processes on the build database,
+and if it's OK to do so, drops the existing build database. It then creates a
+new database with the same name and then executes the build script.
+
+.Listing 4
+[source,powershell]
+----
+$db = New-Object Microsoft.SqlServer.Management.Smo.Database
+$db.Name = $data.build.NewDatabase
+$db.Parent = $server
+$db.Create()
+# Now the white-knuckle bit: we build the database first ....
+
+write-verbose "creating the build database $($data.build.NewDatabase) on
+$($data.build.NewBuildServerInstance)"
+\<# we can add pre-build and post-build scripts at this point where they are really necessary #\>
+try
+{
+Invoke-Sqlcmd -serverinstance $data.build.NewBuildServerInstance -Database
+$data.build.NewDatabase \`
+\-InputFile "$($data.source.DatabasePath)\$($data.current.Database).sql" |
+#execute the build script
+Out-File -filePath
+"$($data.source.ReportPath)\$($data.build.NewDatabase)CodeBuild.rpt"
+
+----
 
 
-
-The general principles are:
-
-* All databases within development must be at the version of the current successful build.
-
-* Before we update a database, we preserve changes just in case the developer has forgotten to save their work in source control.
- 
-* We audit as much of the process as possible.
-
-* We need to allow for arbitrary pre- and post-build scripts, mainly for inserting data.
-
-* It should be possible to inspect the entire build script.
-
-* The script itself should have no hard-coded variables. These should be held in a data file.
+There is also a "build check" step, where it uses SQL Compare to compare the new
+build with the source code directory to make sure that it was successful (*i.e.*
+that the build database matches exactly the database described by the scripts in
+the Source directory)
 
 
-In the script that I’m featuring, I’m using
-some Redgate tools to do the work. Only SQL Compare is essential, but Data
-Compare can be used to create an executable file that inserts data into tables.
+.Listing 5
+[source,powershell]
+----
+#check the build
+write-verbose "checking the build database $($data.build.NewDatabase) on
+$($data.build.NewBuildServerInstance)"
+$AllArgs = \@("/scripts1:$($data.source.DatabasePath)\Source", #The source
+scripts directory
+"/server2:$($data.build.NewBuildServerInstance)", #the server where we
+created the build
+"/database2:$($data.build.NewDatabase)", #the database where we created the
+build
+'/q', "/exclude:user", #quiet, don't compare users
+"/report:$($data.source.reportPath)\BuildCheckReport.html", #where the
+report goes
+"/options:IgnoreWhiteSpace,ignoreuserproperties,ignorefillfactor" #ignore
+semicolons and whitespace
+"/reportType:Simple", "/rad", "/force") # do a simple report
+SQLCompare $AllArgs \> "$($data.source.reportPath)\BuildCheck.txt" #save
+the output
+if ($?) { 'checked new build successfully' }
+else { write-warning "see
+file:///$($data.source.DatabasePath)\CheckReport.html for differences to
+build and source" }
+
+----
+
+#### 3. Fill the database with test data
+
+If the script finds a SQL Data Generator project file, DataGenerator.sqlgen, in
+the database's Source directory, it will use it to load the new build database
+with generated test data. Otherwise, it will use the DataSyncFile.sql script
+containing the INSERT statements.
+
+.Listing 6
+[source,powershell]
+----
+
+if (($data.tools.sqlDataGenerator -ne $null)
+-and($data.Source.SQLDataGeneratorFile -ne $null))
+{ #they have specified using SQL Data Generator
+write-verbose "Using SQL Data Generator project file
+$($data.Source.SQLDataGeneratorFile) on database $($data.build.NewDatabase)
+on server $($data.build.NewBuildServerInstance)"
+sqldatagenerator /project:$data.Source.SQLDataGeneratorFile
+/server:$data.build.NewBuildServerInstance \`
+/database:$data.build.NewDatabase | Out-File -filePath
+"$($data.source.ReportPath)\$($data.build.NewDatabase)SDG.rpt"
+if ($?) { Write-verbose 'inserted fake data successfully' }
+else
+{
+Write-error "we had an error with SQL Data Generator! (code $LASTEXITCODE)"
+}
+}
+elseif ($data.Source.DataSyncFile -ne $null) #they want to fill with
+insertion scripts.
+{
+# ...and now we stock the database with data.
+write-verbose "Executing insert statements from $($data.Source.DataSyncFile)
+on database $($data.build.NewDatabase) on server
+$($data.build.NewBuildServerInstance)"
+Invoke-Sqlcmd -serverinstance $data.build.NewBuildServerInstance -Database
+$data.build.NewDatabase \`
+\-InputFile $data.Source.DataSyncFile | #and insert the data
+Out-File -filePath
+"$($data.source.ReportPath)\$($data.build.NewDatabase)DataBuild.rpt"
+}
+else { throw 'No way of stocking the data was specified' }
+}
+
+----
+
+#### 4. Generate database documentation
+
+The script will generate database documentation (HTML) for the new build
+database, or refresh the existing documentation, using **SQL Doc**, if we
+specify a path to the SQL Doc executable in the build data file, and save it to
+version control
+
+.Listing 7
+[source,powershell]
+----
+#now we document the source of the database.
+if ($data.tools.sqlDoc -ne $null)
+{ #they have specified using SQL doc
+write-verbose "Using SQL Doc on database $($data.build.NewDatabase) on server
+$($data.build.NewBuildServerInstance)"
+sqldoc /server:$data.build.NewBuildServerInstance
+/database:$data.build.NewDatabase |
+Out-File -filePath
+"$($data.source.ReportPath)\$($data.build.NewDatabase)SD.rpt"
+if ($?) { Write-verbose 'Documented the source successfully' }
+else
+{
+Write-error "we had an error with SQLDoc! (code $LASTEXITCODE)"
+}
+}
+----
+### The Provisioning phase
+
+During this phase the script will use SQL Clone to create an **image** of the
+database and then, from this image, create or refresh clones on the list of
+clones (named **Clones**) in **MyInstallationData.**ps1 that are in one of the
+target servers that have been registered on the SQL Clone Server.
+
+#### 5. Create an image of the build database
+
+The script gets the names of the build SQL Server instance and database, and
+creates an image of this database at the image location specified for it on SQL
+Clone Server by the **image_id**.
+
+.Listing 8
+[source,powershell]
+----
+#create an image of what we built. We name it whatever we have specified,
+$AllArgs = \@{
+'Name' = "$($data.Image.Name.ToString())"; #what is specified for its name in
+the data file
+'SqlServerInstance' = (Get-SqlCloneSqlServerInstance | Where server -eq
+$db.parent.NetName);
+# we fetch the SqlServerInstanceResource for passing to the New-SqlCloneImage
+cmdlets.
+'DatabaseName' = "$($db.name)"; \the name of the database
+'Destination' = (Get-SqlCloneImageLocation | Where Id -eq $data.Image.ID)
+#where the image is stored
+}
+$ImageOperation = New-SqlCloneImage \@AllArgs
+# gets the ImageResource which then enables us to wait until the process is
+finished
+Wait-SqlCloneOperation -Operation $ImageOperation
+write-verbose "Cloning $($data.build.NewDatabase) on
+$($data.build.NewBuildServerInstance)"
+#check that the the image exists
+if (-not (Get-SqlCloneImage | where name -eq $data.image.Name))
+{
+throw "couldn't find the clone $($data.image.Name)"
+}
+
+----
+
+
+#### 6. Create clones
+
+The script creates as many clones as you specify from the image. It goes through
+the list of clones that you provide in the data file and, if the clone exists,
+removes it. We have already saved any alterations. It then creates it from the
+image.
+
+.Listing 9
+[source,powershell]
+----
+
+#clone it as whatever database is specified to whatever sql clone servers are
+specified
+$data.clones | foreach {
+$clone = $null; $Thedatabase = $_.Database;
+#get the correct instance that has an agent installed on it.
+$sqlServerInstance = (Get-SqlCloneSqlServerInstance | Where server -eq
+$_.NetName);
+if ($sqlServerInstance -eq $null) { Throw "Unable to find the location of
+$_.NetName" }
+write-verbose "Cloning $($_.Database) on $($_.NetName)"
+$clone = Get-SqlClone -ErrorAction silentlyContinue -Name "$($TheDatabase)"
+-Location $sqlServerInstance
+#$clone = Get-SqlClone | where { $_.name -eq $TheDatabase -and
+($_.locationID -eq $sqlServerInstance.Id) }
+#$clone = Get-SqlClone -name $_.Database -Location
+(Get-SqlCloneSqlServerInstance | Where server -eq $_.NetName)
+if (($clone) -ne $null)
+{
+write-warning "Removing Clone $Thedatabase that already existed on
+$($_.NetName)"
+Remove-SqlClone $clone | Wait-SqlCloneOperation
+}
+Get-SqlCloneImage -Name $data.Image.Name |
+New-SqlClone -Name "$($_.Database)" -Location $SqlServerInstance |
+Wait-SqlCloneOperation
+
+----
+
+
+### The Installation data file (**MyInstallationData.**ps1)
+
+You will need to change the build data file to define your database, server
+environment, network paths, and list of clones, all in a PowerShell PSON Data
+structure. This is in several sections and subsections
+
+#### Tools 
+
+A list of the locations of the various tools
+
+-   The path to where we have SQL Compare installed
+-   The path to where we have SQL Data Compare installed (leave **$null** if
+    not wanted)
+-   The path to where we have SQL Data generator installed (leave **$null** if
+    not wanted)
+
+-   The path to where we have SQL Doc installed (leave **$null** if not wanted)
+
+#### **Source**
+
+The various directories in which you want to store files and logs
+
+-   The path to the Source directory for this database
+
+-   The location of the executable SQL data insertion script.
+
+-   The location of the SQL Data Generator file for any columns you need to
+    obfuscate (leave $null if not wanted)
+
+-   where you want to put the reports for a database.
+
+-   where changes between clone and build are stored
+
+#### Current
+
+The details of the current development shared server if you don't yet have a
+VCS-based source code directory (leave as $null or delete if you don't need or
+want to use this. It is only used if the system can't find your source code
+directory
+
+-   the Server Instance of the development SQL Server to get the source from
+    (optional)
+
+-   The name of the database
+
+#### Build
+
+The location of the database that you want to build:
+
+-   The Server of the SQL Server Instance you want to use for the build
+
+-   The name of the database you want to call it
+
+-   The SQL Data Generator project you want to use for the data (optional)
+
+#### Image
+
+The details of the image that you want to create:
+
+-   The name of the image we want to create
+
+-   The clone server URL
+
+-   The ID of the SQL Clone image location (usually 1)
+
+#### Clones
+
+A list of all the cloned databases, referenced by the NETNAME of the clone
+servers and the name of the clone database
+
+.Listing 1
+[source,powershell]
+----
+
+"Clones" = \@(
+
+\@{ "NetName" = "MyServerName"; "Database" = "$($database)1" },
+
+\@{ "NetName" = "MyServerName"; "Database" = "$($database)2" },
+
+\@{ "NetName" = "MyServerName"; "Database" = "$($database)3" },
+
+\@{ "NetName" = "MyServerName"; "Database" = "$($database)1" },
+
+\@{ "NetName" = "MyServerName"; "Database" = "$($database)2" },
+
+\@{ "NetName" = "MyServerName"; "Database" = "$($database)3" }
+
+)
+----
+
+Alternative Strategies
+----------------------
+
 Normally when I do a PowerShell script that uses a proprietary tool, I like to
 provide an additional alternative version that uses whatever is provided by
-Microsoft or has a free software license, but in this case, it would be rather impractical.
-It is possible to do a build from object scripts: I’ve illustrated how to do so
-in my article ‘https://www.simple-talk.com/sql/database-delivery/how-to-build-and-deploy-a-database-from-object-level-source-in-a-vcs/[How
-to Build and Deploy a Database from Object-Level Source in a VCS]’. Cloning
-can present a much bigger problem. One alternative mechanism for provisioning
-is to copy the mdf file onto each machine and attach it on each server. One
-can, of course run a backup from the database you want to copy, and restore it
-to each clone. Both these techniques are slow, end up with a lot of data being
-moved around the network and use a lot of disk space. It also leaves more complications
-for security.
+Microsoft or has a free software license, but in this case, it would be rather
+impractical. It is possible to do a build from object scripts: I've illustrated
+how to do so in my article, [How to Build and Deploy a Database from
+Object-Level Source in a
+VCS](file:///C:\Users\andrew.clarke\AppData\Local\Microsoft\Windows\INetCache\Content.Outlook\X9GQ5BWT\'https:\www.simple-talk.com\sql\database-delivery\how-to-build-and-deploy-a-database-from-object-level-source-in-a-vcs\).
 
-The script itself is rather too long to be
-embedded in an article. Besides this, I keep adding features and trying to
-improve it. Everyone who tries it wants additional features. I’ve therefore
-decided to place it on Github in the hope that someone else will take it and
-improve it.
+Cloning can present a much bigger problem. One alternative mechanism for
+provisioning is to copy the mdf file onto each machine and attach it on each
+server. One can, of course run a backup from the database you want to copy, and
+restore it to each clone. Both these techniques are slow, end up with a mass of
+data being moved around the network and use a lot of disk space. It can also
+leave more complications for security due to the file permissions that are
+necessary. The editor tells me that Simple-Talk is due to publish an article by
+Grant Fritchey that tells you how to do this.
 
-To use the script, you will need to get two powershell files. You will also need at least SQL Clone and SQL Compare. If you have the toolbelt, you'll be able to use SQL Data Compare, SQL Data Generator and SQL Doc where you need to.
+For further information
+-----------------------
 
-[TIP]
-====
-The Readame.md file gives you detailed instructions on how to get going with the script.
-====
+The script itself is rather too long to be embedded in an article. Besides this,
+I keep adding features and trying to improve it. Everyone who tries it wants
+additional features. I've therefore decided to place it on Github in the hope
+that someone else will take it and improve it.
 
+https://github.com/Phil-Factor/DeployViaToolBeltAndClone
