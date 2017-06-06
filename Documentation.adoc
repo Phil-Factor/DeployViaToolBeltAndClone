@@ -227,9 +227,8 @@ testing. If it doesn't exist, the script will, if required, generate a data
 INSERT script (DataSyncFile.sql) from the existing data in the current database,
 using **SQL Data Compare**. Be careful with this, it is designed merely for the
 small amount of static data that is required for a database to run. Test data
-needs to be [loaded from native BCP
-format](https://www.simple-talk.com/sql/t-sql-programming/database-deployment-the-bits-getting-data-in/).
-Insert statements would take too long.
+needs to be https://www.simple-talk.com/sql/t-sql-programming/database-deployment-the-bits-getting-data-in/[loaded from native BCP
+format]. Insert statements would take too long.
 
 In reality, there will be a number of different data sets for various forms of
 testing. As an alternative to using SQL Data Compare, or native BCP, we can
@@ -618,9 +617,8 @@ Normally when I do a PowerShell script that uses a proprietary tool, I like to
 provide an additional alternative version that uses whatever is provided by
 Microsoft or has a free software license, but in this case, it would be rather
 impractical. It is possible to do a build from object scripts: I've illustrated
-how to do so in my article, [How to Build and Deploy a Database from
-Object-Level Source in a
-VCS](file:///C:\Users\andrew.clarke\AppData\Local\Microsoft\Windows\INetCache\Content.Outlook\X9GQ5BWT\'https:\www.simple-talk.com\sql\database-delivery\how-to-build-and-deploy-a-database-from-object-level-source-in-a-vcs\).
+how to do so in my article, 
+http://www.simple-talk.com\sql\database-delivery\how-to-build-and-deploy-a-database-from-object-level-source-in-a-vcs\)[How to Build and Deploy a Database from Object-Level Source in a VCS]
 
 Cloning can present a much bigger problem. One alternative mechanism for
 provisioning is to copy the mdf file onto each machine and attach it on each
@@ -638,5 +636,4 @@ The script itself is rather too long to be embedded in an article. Besides this,
 I keep adding features and trying to improve it. Everyone who tries it wants
 additional features. I've therefore decided to place it on Github in the hope
 that someone else will take it and improve it.
-
 https://github.com/Phil-Factor/DeployViaToolBeltAndClone
